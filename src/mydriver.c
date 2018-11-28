@@ -21,21 +21,20 @@
 #include <linux/uaccess.h>
 #include "mydriver_ioctl.h"
 
-#define DRIVER_NR_DEVS 3
+#define DRIVER_NR_DEVS 5        /* Default number of devices, if not given in arguments. */
 #define DRIVER_MAJOR 0
-#define CLASS_NAME "queue"
 #define MAX_LIMIT 32
+
+MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
+MODULE_DESCRIPTION("A simple in-memory character device driver which uses queue to read/write operations.");
+MODULE_LICENSE("GPL and additional rights");
+MODULE_VERSION("1.0");
 
 int driver_major = DRIVER_MAJOR;
 int driver_minor = 0;
 int driver_nr_devs = DRIVER_NR_DEVS;
 
 module_param(driver_nr_devs, int, S_IRUGO);
-
-MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
-MODULE_DESCRIPTION("A simple in-memory character device driver which uses queue to read/write operations.");
-MODULE_LICENSE("GPL v3");
-MODULE_VERSION("1.0");
 
 struct driver_dev {
     char *data;
