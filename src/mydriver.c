@@ -1,7 +1,6 @@
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-
 #include <linux/kernel.h>	/* printk() */
 #include <linux/slab.h>		/* kmalloc() */
 #include <linux/fs.h>		/* everything... */
@@ -11,7 +10,6 @@
 #include <linux/fcntl.h>	/* O_ACCMODE */
 #include <linux/seq_file.h>
 #include <linux/cdev.h>
-
 #include <asm/switch_to.h>		/* cli(), *_flags */
 #include <asm/uaccess.h>	/* copy_*_user */
 #include <linux/uaccess.h>
@@ -20,22 +18,16 @@
 
 #define DRIVER_MAJOR 0
 #define DRIVER_NR_DEVS 4 ///< number of devices
-#define DRIVER_QUANTUM 4000
-#define DRIVER_QSET 1000
 /// #define  CLASS_NAME  "ebb"        ///< /dev/CLASS_NAME/
 /// #define  DEVICE_NAME "queue"    ///< /dev/CLASS_NAME/DEVICE_NAME , might be redundant  
 
 int driver_major = DRIVER_MAJOR;
 int driver_minor = 0;
 int driver_nr_devs = DRIVER_NR_DEVS;
-int driver_quantum = DRIVER_QUANTUM;
-int driver_qset = DRIVER_QSET;
 
 module_param(driver_major, int, S_IRUGO);
 module_param(driver_minor, int, S_IRUGO);
 module_param(driver_nr_devs, int, S_IRUGO);
-module_param(driver_quantum, int, S_IRUGO);
-module_param(driver_qset, int, S_IRUGO);
 
 MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
 MODULE_LICENSE("GPL v3");
@@ -76,18 +68,7 @@ Namely; driver_init, driver_exit, driver_open, driver_release, driver_trim, driv
 * Quantum operations should be removed
 */
 
-struct driver_dev {
-    char *data;
-    int quantum;
-    int qset;
-    unsigned long size;
-    struct semaphore sem;
-    struct cdev cdev;
-};
-
-struct driver_dev *driver_devices;
-
-
+/*
 int driver_trim(struct driver_dev *dev)
 {
 	printk(KERN_INFO "My Driver: Trim function is going to be executed.\n");
@@ -108,10 +89,22 @@ int driver_trim(struct driver_dev *dev)
 	printk(KERN_INFO "My Driver: Trimming is done.\n");
     return 0;
 }
+*/
 
-int driver_open(struct inode *inode, struct file *filp) // First operation performed in the device file
+struct driver_dev {
+    char *data;
+    unsigned long size;
+    struct semaphore sem;
+    struct cdev cdev;
+};
+
+struct driver_dev *driver_devices;
+
+int driver_open(struct inode *inode, struct file *filp)
 {
 	printk(KERN_INFO "My Driver: Device open is called.\n");
+    dev->data = NULL;
+    dev->size = 0;
     struct driver_dev *dev;
 
     dev = container_of(inode->i_cdev, struct driver_dev, cdev);
@@ -122,15 +115,13 @@ int driver_open(struct inode *inode, struct file *filp) // First operation perfo
 		printk(KERN_INFO "My Driver: Device will be trimmed.\n");
         if (down_interruptible(&dev->sem))
             return -ERESTARTSYS;
-        driver_trim(dev);
         up(&dev->sem);
     }
 	printk(KERN_INFO "My Driver: Device opened successfully.\n");
     return 0;
 }
 
-
-int driver_release(struct inode *inode, struct file *filp) // Release the file structure
+int driver_release(struct inode *inode, struct file *filp)
 {
 	printk(KERN_INFO "My Driver: Device is released.\n");
     return 0;
@@ -142,13 +133,13 @@ int driver_release(struct inode *inode, struct file *filp) // Release the file s
  *  @param count The length of the array of data that is being passed in the const char buffer
  *  @param f_pos is the offset if required
  */
+
 ssize_t driver_read(struct file *filp, char __user *buf, size_t count, 
-                   loff_t *f_pos) // Read data from the device
+                   loff_t *f_pos)
  {
     printk(KERN_INFO "My Driver: Device read is going to be executed.\n");
     struct driver_dev *dev = filp->private_data;
-    int quantum = dev->quantum;
-    int q_pos;
+
     ssize_t retval = 0;
 
     if (down_interruptible(&dev->sem))
@@ -156,9 +147,7 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count,
     if (*f_pos >= dev->size)
         goto out;
 
-    q_pos = (long) *f_pos ;
-
-    if (dev->data == NULL || ! dev->data)
+    if (dev->data == NULL || !(dev->data))
         goto out;
 
     if (copy_to_user(buf, dev->data, dev->size)) {
@@ -166,6 +155,7 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count,
         retval = -EFAULT;
         goto out;
     }
+
     retval = dev->size;
 
   out:
@@ -181,41 +171,28 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count,
  *  @param count The length of the array of data that is being passed in the const char buffer
  *  @param f_pos is the offset if required
  */
+
 ssize_t driver_write(struct file *filp, const char __user *buf, size_t count,
                     loff_t *f_pos) // Send data to the device
 {
 	printk(KERN_INFO "My Driver: Device write is going to be executed.\n");
     struct driver_dev *dev = filp->private_data;
-    int quantum = dev->quantum, qset = dev->qset;
-    int s, q_pos;
+    int s;
     ssize_t retval = -ENOMEM;
 
     if (down_interruptible(&dev->sem))
         return -ERESTARTSYS;
 
-    if (*f_pos >= quantum * qset) {
+    if (*f_pos >= count) {
         retval = 0;
         goto out;
     }
 
-    q_pos = (long) *f_pos;
-
-    if (!dev->data) {
-        dev->data = kmalloc(qset * sizeof(char *), GFP_KERNEL);
-        if (!dev->data)
-            goto out;
-        memset(dev->data, 0, qset * sizeof(char *));
-    }
-    if (!dev->data) {
-        dev->data= kmalloc(quantum, GFP_KERNEL);
-        if (!dev->data)
-            goto out;
-    }
-
-    if (copy_from_user(dev->data + q_pos, buf, count)) {
+    if (copy_from_user(dev->data, buf, count)) {
         retval = -EFAULT;
         goto out;
     }
+
     *f_pos += count;
     retval = count;
 
@@ -256,79 +233,7 @@ long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Cal
 
 	switch(cmd) {
 	  case DRIVER_IOCRESET:
-		driver_quantum = DRIVER_QUANTUM;
-		driver_qset = DRIVER_QSET;
 		break;
-
-	  case DRIVER_IOCSQUANTUM: /* Set: arg points to the value */
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		retval = __get_user(driver_quantum, (int __user *)arg);
-		break;
-
-	  case DRIVER_IOCTQUANTUM: /* Tell: arg is the value */
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		driver_quantum = arg;
-		break;
-
-	  case DRIVER_IOCGQUANTUM: /* Get: arg is pointer to result */
-		retval = __put_user(driver_quantum, (int __user *)arg);
-		break;
-
-	  case DRIVER_IOCQQUANTUM: /* Query: return it (it's positive) */
-		return driver_quantum;
-
-	  case DRIVER_IOCXQUANTUM: /* eXchange: use arg as pointer */
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		tmp = driver_quantum;
-		retval = __get_user(driver_quantum, (int __user *)arg);
-		if (retval == 0)
-			retval = __put_user(tmp, (int __user *)arg);
-		break;
-
-	  case DRIVER_IOCHQUANTUM: /* sHift: like Tell + Query */
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		tmp = driver_quantum;
-		driver_quantum = arg;
-		return tmp;
-
-	  case DRIVER_IOCSQSET:
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		retval = __get_user(driver_qset, (int __user *)arg);
-		break;
-
-	  case DRIVER_IOCTQSET:
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		driver_qset = arg;
-		break;
-
-	  case DRIVER_IOCGQSET:
-		retval = __put_user(driver_qset, (int __user *)arg);
-		break;
-
-	  case DRIVER_IOCQQSET:
-		return driver_qset;
-
-	  case DRIVER_IOCXQSET:
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		tmp = driver_qset;
-		retval = __get_user(driver_qset, (int __user *)arg);
-		if (retval == 0)
-			retval = put_user(tmp, (int __user *)arg);
-		break;
-
-	  case DRIVER_IOCHQSET:
-		if (! capable (CAP_SYS_ADMIN))
-			return -EPERM;
-		tmp = driver_qset;
-		driver_qset = arg;
-		return tmp;
 
 	  default:  /* redundant, as cmd was checked against MAXNR */
 		return -ENOTTY;
@@ -386,7 +291,6 @@ void driver_cleanup_module(void)
 
     if (driver_devices) {
         for (i = 0; i < driver_nr_devs; i++) {
-            driver_trim(driver_devices + i);
             cdev_del(&driver_devices[i].cdev);
         }
     kfree(driver_devices);
@@ -424,7 +328,7 @@ int driver_init_module(void)
                             GFP_KERNEL); // allocate memory
     if (!driver_devices) {
         result = -ENOMEM;
-        printk(KERN_ALERT "Failed to create the device\n");
+        printk(KERN_ALERT "My Driver: Failed to create the device.\n");
         goto fail;
     }
     memset(driver_devices, 0, driver_nr_devs * sizeof(struct driver_dev));
@@ -432,8 +336,6 @@ int driver_init_module(void)
     /* Initialize each device. */
     for (i = 0; i < driver_nr_devs; i++) {
         dev = &driver_devices[i];
-        dev->quantum = driver_quantum;
-        dev->qset = driver_qset;
         sema_init(&dev->sem,1);
         devno = MKDEV(driver_major, driver_minor + i);
         cdev_init(&dev->cdev, &driver_fops);

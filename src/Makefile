@@ -10,11 +10,11 @@ clean:
 test:	
 	sudo dmesg -C
 	sudo insmod mydriver.ko
-	sudo mknod /dev/mydriver0 c 238 0
-	sudo mknod /dev/mydriver1 c 238 1
-	echo 'test mydriver0' > /dev/mydriver0
-	cat /dev/mydriver0
-	echo 'test mydriver1' > /dev/mydriver1
-	cat /dev/mydriver1
+	sudo mknod /dev/queue0 c 238 0
+	sudo mknod /dev/queue1 c 238 1
+	echo 'test queue0' > /dev/queue0
+	cat /dev/queue0
+	echo 'test queue1' > /dev/queue1
+	cat /dev/queue1
 	sudo rmmod mydriver.ko
-	sudo dmesg
+	sudo dmesg | grep 'My Driver'
