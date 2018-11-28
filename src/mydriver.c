@@ -16,7 +16,7 @@
 #include <asm/uaccess.h>	/* copy_*_user */
 #include <linux/uaccess.h>
 
-#include "module_ioctl.h"
+#include "mydriver_ioctl.h"
 
 #define SCULL_MAJOR 0
 #define SCULL_NR_DEVS 4 ///< number of devices
