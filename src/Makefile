@@ -8,8 +8,9 @@ clean:
 	make -C /lib/modules/$(shell uname -r)/build/ M=$(PWD) clean
 
 # $ make test
-test:	
-	sudo dmesg -C
+test:
+	sudo rmmod mydriver.ko # If old one was already loaded.	
+	sudo dmesg -C		   # Clear all previous kernel messages.
 	sudo insmod mydriver.ko
 	sudo mknod /dev/queue0 c 238 0
 	sudo mknod /dev/queue1 c 238 1
@@ -17,5 +18,5 @@ test:
 	cat /dev/queue0
 	echo 'test queue1' > /dev/queue1
 	cat /dev/queue1
-	sudo rmmod mydriver.ko
+	sudo rmmod mydriver
 	sudo dmesg | grep 'My Driver'
