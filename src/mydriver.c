@@ -29,8 +29,8 @@ module_param(driver_minor, int, S_IRUGO);
 module_param(driver_nr_devs, int, S_IRUGO);
 
 MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
-MODULE_LICENSE("GPL v3");
 MODULE_DESCRIPTION("A simple in-memory character device driver which uses queue to read/write operations.");
+MODULE_LICENSE("GPL v3");
 MODULE_VERSION("1.0");
 
 struct driver_dev {
@@ -54,7 +54,7 @@ int driver_open(struct inode *inode, struct file *filp)
     if ((filp->f_flags & O_ACCMODE) == O_WRONLY) {
 		printk(KERN_INFO "My Driver: Open request is for write only mode.\n");
         if (down_interruptible(&dev->sem)) {    // ->sem for calling semaphores and handling interrupts.
-            printk(KERN_INFO "My Driver: Not interruptable.\n");
+            printk(KERN_ERR "My Driver: Not interruptable.\n");
             return -ERESTARTSYS;
         }
 
@@ -92,15 +92,13 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count, loff_t *f
 
     ssize_t bytes = count < (MAX_LIMIT-(*f_pos)) ? count : (MAX_LIMIT-(*f_pos));
 
-/*
     if (down_interruptible(&dev->sem)) {
-        printk(KERN_INFO "My Driver: Not interruptable.\n");
+        printk(KERN_ERR "My Driver: Not interruptable ERROR!\n");
         return -ERESTARTSYS;
     }
-*/
 
     if (copy_to_user(buf, dev->data, bytes)) {
-        printk(KERN_INFO "My Driver: Copy data from kernel to user fail.\n");
+        printk(KERN_ERR "My Driver: Copy data from kernel to user ERROR!\n");
         return -EFAULT;
     }
 
@@ -115,13 +113,20 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count, lo
 {
     printk(KERN_INFO "My Driver: Write request is called.\n");
     struct driver_dev *dev = filp->private_data;
+    ssize_t return_val = -ENOMEM;
 
     printk(KERN_INFO "My Driver: Written data is '%s'", buf);
     printk(KERN_INFO "My Driver: %d bytes were written.", count);
 
     if (down_interruptible(&dev->sem)) {
-        printk(KERN_INFO "My Driver: Not interruptable.\n");
+        printk(KERN_ERR "My Driver: Not interruptable ERROR!\n");
         return -ERESTARTSYS;
+    }
+
+    if (*f_pos > count) {
+        printk(KERN_ERR "My Driver: f_pos ERROR!\n");
+        return_val = 0;
+        goto out;
     }
 
     if (!dev->data) {
@@ -129,48 +134,20 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count, lo
         memset(dev->data, 0, count * sizeof(char *));
     }
 
-    copy_from_user(dev->data, buf, count);
+    if (copy_from_user(dev->data, buf, count)) {
+        printk(KERN_ERR "My Driver: Copy from user ERROR!\n");
+        return_val = -EFAULT;
+        goto out;
+    }
+
     *f_pos += count;
     dev->size = *f_pos;
+    return_val = count;
 
+out:
     up(&dev->sem);
     printk(KERN_INFO "My Driver: Returning from the read request.\n");
-    return count;
-    /*
-    struct driver_dev *dev = filp->private_data;
-    int s;
-    ssize_t retval = -ENOMEM;
-
-    if (down_interruptible(&dev->sem)) {
-        printk(KERN_INFO "My Driver: Device is not interruptable.\n");
-        return -ERESTARTSYS;
-        }
-
-    if (*f_pos >= count) {
-        printk(KERN_INFO "My Driver: f_pos >= count.\n");
-        retval = 0;
-        goto out;
-    }
-
-    if (copy_from_user(dev->data, buf, count)) {
-        printk(KERN_INFO "My Driver: Device copied from user.\n");
-        retval = -EFAULT;
-        goto out;
-    }
-
-    *f_pos += count;
-    retval = count;
-
-    /* update the size 
-    if (dev->size < *f_pos)
-        dev->size = *f_pos;
-
-  out:
-    up(&dev->sem);
-	printk(KERN_INFO "My Driver: Returning from the read function.\n");
-    return retval;
-    */
-    
+    return return_val;
 }
 
 long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Called by the ioctl system call
@@ -282,7 +259,7 @@ int driver_init_module(void)
         driver_major = MAJOR(devno);
     }
     if (result < 0) {
-        printk(KERN_WARNING "My Driver: Failed to register a major number %d.\n", driver_major);
+        printk(KERN_ERR "My Driver: Register a major number %d ERROR!\n", driver_major);
         return result;
     }
 
@@ -292,12 +269,11 @@ int driver_init_module(void)
 
     if (!driver_devices) {
         result = -ENOMEM;
-        printk(KERN_ALERT "My Driver: Failed to create the device.\n");
+        printk(KERN_ERR "My Driver: Creating device ERROR!\n");
         goto fail;
     }
     memset(driver_devices, 0, driver_nr_devs * sizeof(struct driver_dev));
 
-    /* Initialize each device. */
     for (i = 0; i < driver_nr_devs; i++) {
         dev = &driver_devices[i];
         sema_init(&dev->sem,1);
@@ -307,10 +283,10 @@ int driver_init_module(void)
         dev->cdev.ops = &driver_fops;
         err = cdev_add(&dev->cdev, devno, 1);
         if (err)
-            printk(KERN_NOTICE "My Driver: Error %d adding%d.\n", err, i);
+            printk(KERN_NOTICE "My Driver: Error %d adding %d.\n", err, i);
     }
 
-    printk(KERN_INFO "My Driver: Device initialized correctly.\n"); // device is initialized
+    printk(KERN_INFO "My Driver: Device initialized correctly.\n");
     return 0;
 
   fail:
