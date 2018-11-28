@@ -89,41 +89,23 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count,
  {
     printk(KERN_INFO "My Driver: Device read is going to be executed.\n");
     struct driver_dev *dev = filp->private_data;
-    int quantum = dev->quantum;
-    int s_pos, q_pos;
-    ssize_t retval = 0;
 
-    if (down_interruptible(&dev->sem))
+    ssize_t bytes = count < (64-(*f_pos)) ? count : (64-(*f_pos));
+
+    if (down_interruptible(&dev->sem)) {
         printk(KERN_INFO "My Driver: Device is not interruptable.\n");
         return -ERESTARTSYS;
-    if (*f_pos >= dev->size)
-        goto out;
-    if (*f_pos + count > dev->size)
-        count = dev->size - *f_pos;
-
-    s_pos = (long) *f_pos;
-    q_pos = 0;
-
-    if (dev->data == NULL)
-        goto out;
-
-    /* read only up to the end of this quantum */
-    if (count > 1)
-        count = quantum - q_pos;
-
-    if (copy_to_user(buf, dev->data, count)) {
-        retval = -EFAULT;
-        goto out;
     }
-    *f_pos += count;
-    retval = count;
 
-  out:
+    if(copy_to_user(buf, dev->data, bytes)){
+        return -EFAULT;
+    }
+
+    (*f_pos) += bytes;
+
     up(&dev->sem);
-    printk(KERN_INFO "My Driver: Returning from the read function.\n");
-    return retval;
+    return bytes;
 }
-
 
 /*
  *  @param filp A pointer to a file object
