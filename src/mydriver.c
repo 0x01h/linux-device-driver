@@ -18,8 +18,8 @@
 
 #define DRIVER_MAJOR 0
 #define DRIVER_NR_DEVS 4 ///< number of devices
-/// #define  CLASS_NAME  "ebb"        ///< /dev/CLASS_NAME/
-/// #define  DEVICE_NAME "queue"    ///< /dev/CLASS_NAME/DEVICE_NAME , might be redundant  
+#define CLASS_NAME "queue"        ///< /dev/CLASS_NAME/
+#define  DEVICE_NAME "0"    ///< /dev/CLASS_NAME/DEVICE_NAME , might be redundant  
 
 int driver_major = DRIVER_MAJOR;
 int driver_minor = 0;
@@ -31,65 +31,8 @@ module_param(driver_nr_devs, int, S_IRUGO);
 
 MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
 MODULE_LICENSE("GPL v3");
-/*Changes 1
-char **data ---> char *data //birden çok yerine tek char arrayi tutulacak
-dev->data[s_pos] ve dev->data[i]---->dev->data//tek olan char arrayi gösteriyor
-s_pos//kullanılmadığı için silindi
-q_pos = (long) *f_pos%quantum --->q_pos = (long) *f_pos//tek array olduğundan arraydeki yeri = dosyadaki yeri
-*/
-
-/*
-    driver_open(): Called each time the device is opened from user space.
-    driver_read(): Called when data is sent from the device to user space.
-    driver_write(): Called when data is sent from user space to the device.
-    driver_release(): Called when the device is closed in user space.
-*/
-
-
-/* Changes 2
-Added comments & explanations for all the functions.
-Namely; driver_init, driver_exit, driver_open, driver_release, driver_trim, driver_read, driver_write
-*/
-
-/* Remaining Changes
-*Queue Operations
-* Modify the "write" function: Writing to a queue device will insert the written text to the end of the queue. 
-* Modify the "read" function: When reading from the queue, entries in the queue will behave as concatenated strings.
-* Implement "pop" function: ioctl command named "pop" will return the entry at the front of the queue and remove it from the queue
-*
-*Integrate "pop" with queue0
-* /dev/queue0 will be a special queue which will only be used through the ioctl command described above (no read or write).
-* It will pop the front element from queue1 if the queue is not empty.
-* Otherwise it will try the remaining queues in order and pop from the first queue that is not empty. 
-*
-*Additional
-* Device names should be "queue", not "driver".
-* The number of queue devices will be a module parameter.
-* Quantum operations should be removed
-*/
-
-/*
-int driver_trim(struct driver_dev *dev)
-{
-	printk(KERN_INFO "My Driver: Trim function is going to be executed.\n");
-    int i;
-
-    if (dev->data) {
-        for (i = 0; i < dev->qset; i++) {
-            if (dev->data)
-                kfree(dev->data);
-        }
-        kfree(dev->data);
-    }
-    dev->data = NULL;
-    dev->quantum = driver_quantum;
-    dev->qset = driver_qset;
-    dev->size = 0;
-
-	printk(KERN_INFO "My Driver: Trimming is done.\n");
-    return 0;
-}
-*/
+MODULE_DESCRIPTION("A simple character device which uses queue to read and write operations.");
+MODULE_VERSION("1.0");
 
 struct driver_dev {
     char *data;
@@ -105,17 +48,23 @@ int driver_open(struct inode *inode, struct file *filp)
 	printk(KERN_INFO "My Driver: Device open is called.\n");
 
     struct driver_dev *dev;
-    dev->data = NULL;
-    dev->size = 0;
 
     dev = container_of(inode->i_cdev, struct driver_dev, cdev);
     filp->private_data = dev;
 
     /* trim the device if open was write-only */
     if ((filp->f_flags & O_ACCMODE) == O_WRONLY) {
-		printk(KERN_INFO "My Driver: Device will be trimmed.\n");
-        if (down_interruptible(&dev->sem))
+		printk(KERN_INFO "My Driver: Open request is write only.\n");
+        if (down_interruptible(&dev->sem)) {
+            printk(KERN_INFO "My Driver: Device is not interruptable.\n");
             return -ERESTARTSYS;
+        }
+
+    if (dev->data) {
+        kfree(dev->data);
+    }
+    dev->data = NULL;
+    dev->size = 0;
         up(&dev->sem);
     }
 	printk(KERN_INFO "My Driver: Device opened successfully.\n");
@@ -140,28 +89,38 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count,
  {
     printk(KERN_INFO "My Driver: Device read is going to be executed.\n");
     struct driver_dev *dev = filp->private_data;
-
+    int quantum = dev->quantum;
+    int s_pos, q_pos;
     ssize_t retval = 0;
 
     if (down_interruptible(&dev->sem))
+        printk(KERN_INFO "My Driver: Device is not interruptable.\n");
         return -ERESTARTSYS;
     if (*f_pos >= dev->size)
         goto out;
+    if (*f_pos + count > dev->size)
+        count = dev->size - *f_pos;
 
-    if (dev->data == NULL || !(dev->data))
+    s_pos = (long) *f_pos;
+    q_pos = 0;
+
+    if (dev->data == NULL)
         goto out;
 
-    if (copy_to_user(buf, dev->data, dev->size)) {
-		printk(KERN_INFO "My Driver: Failed to send data to the user's application.\n");
+    /* read only up to the end of this quantum */
+    if (count > 1)
+        count = quantum - q_pos;
+
+    if (copy_to_user(buf, dev->data, count)) {
         retval = -EFAULT;
         goto out;
     }
-
-    retval = dev->size;
+    *f_pos += count;
+    retval = count;
 
   out:
     up(&dev->sem);
-	printk(KERN_INFO "My Driver: Returning from the read function.\n");
+    printk(KERN_INFO "My Driver: Returning from the read function.\n");
     return retval;
 }
 
@@ -176,20 +135,39 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count,
 ssize_t driver_write(struct file *filp, const char __user *buf, size_t count,
                     loff_t *f_pos) // Send data to the device
 {
-	printk(KERN_INFO "My Driver: Device write is going to be executed.\n");
+    struct driver_dev *dev = filp->private_data;
+    printk(KERN_INFO "%d", count);
+    printk(KERN_INFO "%s", buf);
+    if (!dev->data) {
+        dev->data = kmalloc(50 * sizeof(char *), GFP_KERNEL);
+        if (!dev->data)
+            printk(KERN_INFO "lel");
+        memset(dev->data, 0, 50 * sizeof(char *));
+    }
+    copy_from_user(dev->data, buf, count);
+    *f_pos += count;
+    dev->size = *f_pos;
+    printk(KERN_INFO "%d", *f_pos);
+    up(&dev->sem);
+    return count;
+    /*
     struct driver_dev *dev = filp->private_data;
     int s;
     ssize_t retval = -ENOMEM;
 
-    if (down_interruptible(&dev->sem))
+    if (down_interruptible(&dev->sem)) {
+        printk(KERN_INFO "My Driver: Device is not interruptable.\n");
         return -ERESTARTSYS;
+        }
 
     if (*f_pos >= count) {
+        printk(KERN_INFO "My Driver: f_pos >= count.\n");
         retval = 0;
         goto out;
     }
 
     if (copy_from_user(dev->data, buf, count)) {
+        printk(KERN_INFO "My Driver: Device copied from user.\n");
         retval = -EFAULT;
         goto out;
     }
@@ -197,7 +175,7 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count,
     *f_pos += count;
     retval = count;
 
-    /* update the size */
+    /* update the size 
     if (dev->size < *f_pos)
         dev->size = *f_pos;
 
@@ -205,6 +183,8 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count,
     up(&dev->sem);
 	printk(KERN_INFO "My Driver: Returning from the read function.\n");
     return retval;
+    */
+    
 }
 
 long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Called by the ioctl system call
@@ -282,7 +262,6 @@ struct file_operations driver_fops = {
     .open =     driver_open,
     .release =  driver_release,
 };
-
 
 void driver_cleanup_module(void)
 {
