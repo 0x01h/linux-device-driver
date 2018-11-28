@@ -30,9 +30,10 @@ MODULE_DESCRIPTION("A simple in-memory character device driver which uses queue 
 MODULE_LICENSE("GPL and additional rights");
 MODULE_VERSION("1.0");
 
-int driver_major = DRIVER_MAJOR;
-int driver_minor = 0;
-int driver_nr_devs = DRIVER_NR_DEVS;
+unsigned int driver_major = DRIVER_MAJOR;
+unsigned int driver_nr_devs = DRIVER_NR_DEVS;
+static struct cdev c_dev;               // Global variable for the character device structure.
+static struct class *cl;                // Global variable for the device class.
 
 module_param(driver_nr_devs, int, S_IRUGO);
 
@@ -153,7 +154,7 @@ out:
     return return_val;
 }
 
-long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Called by the ioctl system call
+long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 {
 
 	int err = 0, tmp;
@@ -229,18 +230,20 @@ struct file_operations driver_fops = {
 void driver_cleanup_module(void)
 {
 	printk(KERN_INFO "My Driver: RMMOD request is called, cleaning up the module...\n");
-    
-    dev_t devno = MKDEV(driver_major, driver_minor);
+    printk(KERN_INFO "My Driver: Major %d will be cleaned.\n", driver_major);    
+
     int i;
 
-    if (driver_devices) {
-        for (i = 0; i < driver_nr_devs; i++) {
-            cdev_del(&driver_devices[i].cdev);
-        }
-    kfree(driver_devices);
+    unregister_chrdev_region(driver_major, driver_nr_devs);
+
+    for (i = 0; i < driver_nr_devs; i++) {
+    dev_t devno = MKDEV(driver_major, i);
+    device_destroy(cl, devno);   
     }
 
-    unregister_chrdev_region(devno, driver_nr_devs);
+    cdev_del(&c_dev);
+    class_destroy(cl);
+
     printk(KERN_INFO "My Driver: Cleanup was completed, goodbye from the module!\n");
     return;
 }
@@ -251,43 +254,45 @@ int driver_init_module(void)
     
     int result, i;
     int err;
-    dev_t devno = 0; // start naming from 0
+    dev_t devno = 0; // Start naming from 0.
     struct driver_dev *dev;
 
-    if (driver_major) { // for the first device (!!)
-        devno = MKDEV(driver_major, driver_minor);
-        result = register_chrdev_region(devno, driver_nr_devs, "driver");
-    } else {
-        result = alloc_chrdev_region(&devno, driver_minor, driver_nr_devs, "driver");
-        driver_major = MAJOR(devno);
-    }
+    result = alloc_chrdev_region(&devno, 0, driver_nr_devs, "mydriver");
+    driver_major = MAJOR(devno);
+
     if (result < 0) {
         printk(KERN_ERR "My Driver: Register a major number %d ERROR!\n", driver_major);
         return result;
     }
 
     printk(KERN_INFO "My Driver: Registered correctly with major number %d.\n", driver_major);
-    
-    driver_devices = kmalloc(driver_nr_devs * sizeof(struct driver_dev), GFP_KERNEL);
 
-    if (!driver_devices) {
-        result = -ENOMEM;
-        printk(KERN_ERR "My Driver: Creating device ERROR!\n");
-        goto fail;
+    if ((cl = class_create(THIS_MODULE, "mydriver_class")) == NULL) {
+        printk(KERN_ERR "My Driver: Register class ERROR!\n");
+        unregister_chrdev_region(devno, driver_nr_devs);
+        return -1;
     }
-    memset(driver_devices, 0, driver_nr_devs * sizeof(struct driver_dev));
+
+    cdev_init(&c_dev, &driver_fops);
+
+    if (cdev_add(&c_dev, devno, driver_nr_devs) == -1) {
+        printk(KERN_ERR "My Driver: Device add ERROR!\n");
+        device_destroy(cl, devno);
+        class_destroy(cl);
+        unregister_chrdev_region(devno, driver_nr_devs);
+        return -1;
+    }
 
     for (i = 0; i < driver_nr_devs; i++) {
-        dev = &driver_devices[i];
-        sema_init(&dev->sem,1);
-        devno = MKDEV(driver_major, driver_minor + i);
-        cdev_init(&dev->cdev, &driver_fops);
-        dev->cdev.owner = THIS_MODULE;
-        dev->cdev.ops = &driver_fops;
-        err = cdev_add(&dev->cdev, devno, 1);
-        if (err)
-            printk(KERN_NOTICE "My Driver: Error %d adding %d.\n", err, i);
+    char device_name[16] = "";
+    sprintf(device_name, "queue%d", i);
+    if (!device_create(cl, NULL, MKDEV(driver_major, i), NULL, "queue%d", i)) {
+        printk(KERN_ERR "My Driver: Device create ERROR!\n");
+        class_destroy(cl);
+        unregister_chrdev_region(devno, driver_nr_devs);
+        return -1;
     }
+}
 
     printk(KERN_INFO "My Driver: Device initialized correctly.\n");
     return 0;
