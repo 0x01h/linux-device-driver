@@ -16,7 +16,7 @@
 #include <asm/uaccess.h>	/* copy_*_user */
 #include <linux/uaccess.h>
 
-#include "scull_ioctl.h"
+#include "module_ioctl.h"
 
 #define SCULL_MAJOR 0
 #define SCULL_NR_DEVS 4 ///< number of devices
@@ -24,7 +24,6 @@
 #define SCULL_QSET 1000
 /// #define  CLASS_NAME  "ebb"        ///< /dev/CLASS_NAME/
 /// #define  DEVICE_NAME "queue"    ///< /dev/CLASS_NAME/DEVICE_NAME , might be redundant  
-
 
 int scull_major = SCULL_MAJOR;
 int scull_minor = 0;
