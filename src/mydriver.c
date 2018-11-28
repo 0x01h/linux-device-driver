@@ -103,9 +103,10 @@ struct driver_dev *driver_devices;
 int driver_open(struct inode *inode, struct file *filp)
 {
 	printk(KERN_INFO "My Driver: Device open is called.\n");
+
+    struct driver_dev *dev;
     dev->data = NULL;
     dev->size = 0;
-    struct driver_dev *dev;
 
     dev = container_of(inode->i_cdev, struct driver_dev, cdev);
     filp->private_data = dev;
