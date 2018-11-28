@@ -8,7 +8,7 @@ clean:
 
 # $ make test
 test:	
-	dmesg -C
-	insmod mydriver.ko
-	rmmod mydriver.ko
-	dmesg
+	sudo dmesg -C
+	sudo insmod mydriver.ko
+	sudo rmmod mydriver.ko
+	sudo dmesg
