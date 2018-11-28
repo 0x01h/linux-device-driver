@@ -1,22 +1,28 @@
+/*
+* Written and tested in Linux eos 4.15.0-39-generic
+* Compatible with newest version of Linux kernel.
+* Check mydriver's major number by inserting manually and change the corresponding line in "install.sh".
+*/
+
 #include <linux/module.h>
 #include <linux/moduleparam.h>
 #include <linux/init.h>
-#include <linux/kernel.h>	/* printk() */
-#include <linux/slab.h>		/* kmalloc() */
+#include <linux/kernel.h>	    /* printk() */
+#include <linux/slab.h>		    /* kmalloc() */
 #include <linux/fs.h>
-#include <linux/errno.h>	/* Error Codes */
-#include <linux/types.h>	/* size_t */
+#include <linux/errno.h>	    /* error codes */
+#include <linux/types.h>	    /* size_t */
 #include <linux/proc_fs.h>
-#include <linux/fcntl.h>	/* O_ACCMODE */
+#include <linux/fcntl.h>	    /* O_ACCMODE */
 #include <linux/seq_file.h>
 #include <linux/cdev.h>
 #include <asm/switch_to.h>		/* cli(), *_flags */
-#include <asm/uaccess.h>	/* copy_*_user */
+#include <asm/uaccess.h>	    /* copy_*_user */
 #include <linux/uaccess.h>
 #include "mydriver_ioctl.h"
 
+#define DRIVER_NR_DEVS 3
 #define DRIVER_MAJOR 0
-#define DRIVER_NR_DEVS 4
 #define CLASS_NAME "queue"
 #define MAX_LIMIT 32
 
@@ -24,8 +30,6 @@ int driver_major = DRIVER_MAJOR;
 int driver_minor = 0;
 int driver_nr_devs = DRIVER_NR_DEVS;
 
-module_param(driver_major, int, S_IRUGO);
-module_param(driver_minor, int, S_IRUGO);
 module_param(driver_nr_devs, int, S_IRUGO);
 
 MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
@@ -249,7 +253,7 @@ int driver_init_module(void)
     int result, i;
     int err;
     dev_t devno = 0; // start naming from 0
-    struct driver_dev *dev; // pointer to driver_dev struct
+    struct driver_dev *dev;
 
     if (driver_major) { // for the first device (!!)
         devno = MKDEV(driver_major, driver_minor);
