@@ -18,27 +18,27 @@
 
 #include "mydriver_ioctl.h"
 
-#define SCULL_MAJOR 0
-#define SCULL_NR_DEVS 4 ///< number of devices
-#define SCULL_QUANTUM 4000
-#define SCULL_QSET 1000
+#define DRIVER_MAJOR 0
+#define DRIVER_NR_DEVS 4 ///< number of devices
+#define DRIVER_QUANTUM 4000
+#define DRIVER_QSET 1000
 /// #define  CLASS_NAME  "ebb"        ///< /dev/CLASS_NAME/
 /// #define  DEVICE_NAME "queue"    ///< /dev/CLASS_NAME/DEVICE_NAME , might be redundant  
 
-int scull_major = SCULL_MAJOR;
-int scull_minor = 0;
-int scull_nr_devs = SCULL_NR_DEVS;
-int scull_quantum = SCULL_QUANTUM;
-int scull_qset = SCULL_QSET;
+int driver_major = DRIVER_MAJOR;
+int driver_minor = 0;
+int driver_nr_devs = DRIVER_NR_DEVS;
+int driver_quantum = DRIVER_QUANTUM;
+int driver_qset = DRIVER_QSET;
 
-module_param(scull_major, int, S_IRUGO);
-module_param(scull_minor, int, S_IRUGO);
-module_param(scull_nr_devs, int, S_IRUGO);
-module_param(scull_quantum, int, S_IRUGO);
-module_param(scull_qset, int, S_IRUGO);
+module_param(driver_major, int, S_IRUGO);
+module_param(driver_minor, int, S_IRUGO);
+module_param(driver_nr_devs, int, S_IRUGO);
+module_param(driver_quantum, int, S_IRUGO);
+module_param(driver_qset, int, S_IRUGO);
 
-MODULE_AUTHOR("Alessandro Rubini, Jonathan Corbet");
-MODULE_LICENSE("Dual BSD/GPL");
+MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
+MODULE_LICENSE("GPL v3");
 /*Changes 1
 char **data ---> char *data //birden çok yerine tek char arrayi tutulacak
 dev->data[s_pos] ve dev->data[i]---->dev->data//tek olan char arrayi gösteriyor
@@ -47,16 +47,16 @@ q_pos = (long) *f_pos%quantum --->q_pos = (long) *f_pos//tek array olduğundan a
 */
 
 /*
-    scull_open(): Called each time the device is opened from user space.
-    scull_read(): Called when data is sent from the device to user space.
-    scull_write(): Called when data is sent from user space to the device.
-    scull_release(): Called when the device is closed in user space.
+    driver_open(): Called each time the device is opened from user space.
+    driver_read(): Called when data is sent from the device to user space.
+    driver_write(): Called when data is sent from user space to the device.
+    driver_release(): Called when the device is closed in user space.
 */
 
 
 /* Changes 2
 Added comments & explanations for all the functions.
-Namely; scull_init, scull_exit, scull_open, scull_release, scull_trim, scull_read, scull_write
+Namely; driver_init, driver_exit, driver_open, driver_release, driver_trim, driver_read, driver_write
 */
 
 /* Remaining Changes
@@ -71,12 +71,12 @@ Namely; scull_init, scull_exit, scull_open, scull_release, scull_trim, scull_rea
 * Otherwise it will try the remaining queues in order and pop from the first queue that is not empty. 
 *
 *Additional
-* Device names should be "queue", not "scull".
+* Device names should be "queue", not "driver".
 * The number of queue devices will be a module parameter.
 * Quantum operations should be removed
 */
 
-struct scull_dev {
+struct driver_dev {
     char *data;
     int quantum;
     int qset;
@@ -85,12 +85,12 @@ struct scull_dev {
     struct cdev cdev;
 };
 
-struct scull_dev *scull_devices;
+struct driver_dev *driver_devices;
 
 
-int scull_trim(struct scull_dev *dev)
+int driver_trim(struct driver_dev *dev)
 {
-	printk(KERN_INFO "scull: trim function is going to be executed\n");
+	printk(KERN_INFO "My Driver: Trim function is going to be executed.\n");
     int i;
 
     if (dev->data) {
@@ -101,38 +101,38 @@ int scull_trim(struct scull_dev *dev)
         kfree(dev->data);
     }
     dev->data = NULL;
-    dev->quantum = scull_quantum;
-    dev->qset = scull_qset;
+    dev->quantum = driver_quantum;
+    dev->qset = driver_qset;
     dev->size = 0;
-	printk(KERN_INFO "scull: trimming is done\n");
+
+	printk(KERN_INFO "My Driver: Trimming is done.\n");
     return 0;
 }
 
-
-int scull_open(struct inode *inode, struct file *filp) // First operation performed in the device file
+int driver_open(struct inode *inode, struct file *filp) // First operation performed in the device file
 {
-	printk(KERN_INFO "scull: device open is called\n");
-    struct scull_dev *dev;
+	printk(KERN_INFO "My Driver: Device open is called.\n");
+    struct driver_dev *dev;
 
-    dev = container_of(inode->i_cdev, struct scull_dev, cdev);
+    dev = container_of(inode->i_cdev, struct driver_dev, cdev);
     filp->private_data = dev;
 
     /* trim the device if open was write-only */
     if ((filp->f_flags & O_ACCMODE) == O_WRONLY) {
-		printk(KERN_INFO "scull: device will be trimmed\n");
+		printk(KERN_INFO "My Driver: Device will be trimmed.\n");
         if (down_interruptible(&dev->sem))
             return -ERESTARTSYS;
-        scull_trim(dev);
+        driver_trim(dev);
         up(&dev->sem);
     }
-	printk(KERN_INFO "scull: device opened successfully\n");
+	printk(KERN_INFO "My Driver: Device opened successfully.\n");
     return 0;
 }
 
 
-int scull_release(struct inode *inode, struct file *filp) // Release the file structure
+int driver_release(struct inode *inode, struct file *filp) // Release the file structure
 {
-	printk(KERN_INFO "scull: device is released\n");
+	printk(KERN_INFO "My Driver: Device is released.\n");
     return 0;
 }
 
@@ -142,11 +142,11 @@ int scull_release(struct inode *inode, struct file *filp) // Release the file st
  *  @param count The length of the array of data that is being passed in the const char buffer
  *  @param f_pos is the offset if required
  */
-ssize_t scull_read(struct file *filp, char __user *buf, size_t count, 
+ssize_t driver_read(struct file *filp, char __user *buf, size_t count, 
                    loff_t *f_pos) // Read data from the device
  {
-    printk(KERN_INFO "scull: device read is going to be executed\n");
-    struct scull_dev *dev = filp->private_data;
+    printk(KERN_INFO "My Driver: Device read is going to be executed.\n");
+    struct driver_dev *dev = filp->private_data;
     int quantum = dev->quantum;
     int q_pos;
     ssize_t retval = 0;
@@ -162,7 +162,7 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
         goto out;
 
     if (copy_to_user(buf, dev->data, dev->size)) {
-		printk(KERN_INFO "scull: failed to send data to the user/application\n");
+		printk(KERN_INFO "My Driver: Failed to send data to the user's application.\n");
         retval = -EFAULT;
         goto out;
     }
@@ -170,7 +170,7 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
 
   out:
     up(&dev->sem);
-	printk(KERN_INFO "scull: returning from the read function\n");
+	printk(KERN_INFO "My Driver: Returning from the read function.\n");
     return retval;
 }
 
@@ -181,11 +181,11 @@ ssize_t scull_read(struct file *filp, char __user *buf, size_t count,
  *  @param count The length of the array of data that is being passed in the const char buffer
  *  @param f_pos is the offset if required
  */
-ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
+ssize_t driver_write(struct file *filp, const char __user *buf, size_t count,
                     loff_t *f_pos) // Send data to the device
 {
-	printk(KERN_INFO "scull: device write is going to be executed\n");
-    struct scull_dev *dev = filp->private_data;
+	printk(KERN_INFO "My Driver: Device write is going to be executed.\n");
+    struct driver_dev *dev = filp->private_data;
     int quantum = dev->quantum, qset = dev->qset;
     int s, q_pos;
     ssize_t retval = -ENOMEM;
@@ -225,11 +225,11 @@ ssize_t scull_write(struct file *filp, const char __user *buf, size_t count,
 
   out:
     up(&dev->sem);
-	printk(KERN_INFO "scull: returning from the read function\n");
+	printk(KERN_INFO "My Driver: Returning from the read function.\n");
     return retval;
 }
 
-long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Called by the ioctl system call
+long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Called by the ioctl system call
 {
 
 	int err = 0, tmp;
@@ -239,8 +239,8 @@ long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Call
 	 * extract the type and number bitfields, and don't decode
 	 * wrong cmds: return ENOTTY (inappropriate ioctl) before access_ok()
 	 */
-	if (_IOC_TYPE(cmd) != SCULL_IOC_MAGIC) return -ENOTTY;
-	if (_IOC_NR(cmd) > SCULL_IOC_MAXNR) return -ENOTTY;
+	if (_IOC_TYPE(cmd) != DRIVER_IOC_MAGIC) return -ENOTTY;
+	if (_IOC_NR(cmd) > DRIVER_IOC_MAXNR) return -ENOTTY;
 
 	/*
 	 * the direction is a bitmask, and VERIFY_WRITE catches R/W
@@ -255,79 +255,79 @@ long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Call
 	if (err) return -EFAULT;
 
 	switch(cmd) {
-	  case SCULL_IOCRESET:
-		scull_quantum = SCULL_QUANTUM;
-		scull_qset = SCULL_QSET;
+	  case DRIVER_IOCRESET:
+		driver_quantum = DRIVER_QUANTUM;
+		driver_qset = DRIVER_QSET;
 		break;
 
-	  case SCULL_IOCSQUANTUM: /* Set: arg points to the value */
+	  case DRIVER_IOCSQUANTUM: /* Set: arg points to the value */
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		retval = __get_user(scull_quantum, (int __user *)arg);
+		retval = __get_user(driver_quantum, (int __user *)arg);
 		break;
 
-	  case SCULL_IOCTQUANTUM: /* Tell: arg is the value */
+	  case DRIVER_IOCTQUANTUM: /* Tell: arg is the value */
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		scull_quantum = arg;
+		driver_quantum = arg;
 		break;
 
-	  case SCULL_IOCGQUANTUM: /* Get: arg is pointer to result */
-		retval = __put_user(scull_quantum, (int __user *)arg);
+	  case DRIVER_IOCGQUANTUM: /* Get: arg is pointer to result */
+		retval = __put_user(driver_quantum, (int __user *)arg);
 		break;
 
-	  case SCULL_IOCQQUANTUM: /* Query: return it (it's positive) */
-		return scull_quantum;
+	  case DRIVER_IOCQQUANTUM: /* Query: return it (it's positive) */
+		return driver_quantum;
 
-	  case SCULL_IOCXQUANTUM: /* eXchange: use arg as pointer */
+	  case DRIVER_IOCXQUANTUM: /* eXchange: use arg as pointer */
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		tmp = scull_quantum;
-		retval = __get_user(scull_quantum, (int __user *)arg);
+		tmp = driver_quantum;
+		retval = __get_user(driver_quantum, (int __user *)arg);
 		if (retval == 0)
 			retval = __put_user(tmp, (int __user *)arg);
 		break;
 
-	  case SCULL_IOCHQUANTUM: /* sHift: like Tell + Query */
+	  case DRIVER_IOCHQUANTUM: /* sHift: like Tell + Query */
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		tmp = scull_quantum;
-		scull_quantum = arg;
+		tmp = driver_quantum;
+		driver_quantum = arg;
 		return tmp;
 
-	  case SCULL_IOCSQSET:
+	  case DRIVER_IOCSQSET:
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		retval = __get_user(scull_qset, (int __user *)arg);
+		retval = __get_user(driver_qset, (int __user *)arg);
 		break;
 
-	  case SCULL_IOCTQSET:
+	  case DRIVER_IOCTQSET:
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		scull_qset = arg;
+		driver_qset = arg;
 		break;
 
-	  case SCULL_IOCGQSET:
-		retval = __put_user(scull_qset, (int __user *)arg);
+	  case DRIVER_IOCGQSET:
+		retval = __put_user(driver_qset, (int __user *)arg);
 		break;
 
-	  case SCULL_IOCQQSET:
-		return scull_qset;
+	  case DRIVER_IOCQQSET:
+		return driver_qset;
 
-	  case SCULL_IOCXQSET:
+	  case DRIVER_IOCXQSET:
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		tmp = scull_qset;
-		retval = __get_user(scull_qset, (int __user *)arg);
+		tmp = driver_qset;
+		retval = __get_user(driver_qset, (int __user *)arg);
 		if (retval == 0)
 			retval = put_user(tmp, (int __user *)arg);
 		break;
 
-	  case SCULL_IOCHQSET:
+	  case DRIVER_IOCHQSET:
 		if (! capable (CAP_SYS_ADMIN))
 			return -EPERM;
-		tmp = scull_qset;
-		scull_qset = arg;
+		tmp = driver_qset;
+		driver_qset = arg;
 		return tmp;
 
 	  default:  /* redundant, as cmd was checked against MAXNR */
@@ -337,9 +337,9 @@ long scull_ioctl(struct file *filp, unsigned int cmd, unsigned long arg) // Call
 }
 
 
-loff_t scull_llseek(struct file *filp, loff_t off, int whence) // Change current read/write position in a file 
+loff_t driver_llseek(struct file *filp, loff_t off, int whence) // Change current read/write position in a file 
 {
-    struct scull_dev *dev = filp->private_data;
+    struct driver_dev *dev = filp->private_data;
     loff_t newpos;
 
     switch(whence) {
@@ -367,90 +367,89 @@ loff_t scull_llseek(struct file *filp, loff_t off, int whence) // Change current
 
 // location of the following part should not be changed. 
 // the functions had to be defined before this part
-struct file_operations scull_fops = { 
+struct file_operations driver_fops = { 
     .owner =    THIS_MODULE,
-    .llseek =   scull_llseek,
-    .read =     scull_read,
-    .write =    scull_write,
-    .unlocked_ioctl =  scull_ioctl,
-    .open =     scull_open,
-    .release =  scull_release,
+    .llseek =   driver_llseek,
+    .read =     driver_read,
+    .write =    driver_write,
+    .unlocked_ioctl =  driver_ioctl,
+    .open =     driver_open,
+    .release =  driver_release,
 };
 
 
-void scull_cleanup_module(void)
+void driver_cleanup_module(void)
 {
-	printk(KERN_INFO "scull: cleaning up the LKM\n");
+	printk(KERN_INFO "My Driver: Cleaning up the LKM.\n");
     int i;
-    dev_t devno = MKDEV(scull_major, scull_minor);
+    dev_t devno = MKDEV(driver_major, driver_minor);
 
-    if (scull_devices) {
-        for (i = 0; i < scull_nr_devs; i++) {
-            scull_trim(scull_devices + i);
-            cdev_del(&scull_devices[i].cdev);
+    if (driver_devices) {
+        for (i = 0; i < driver_nr_devs; i++) {
+            driver_trim(driver_devices + i);
+            cdev_del(&driver_devices[i].cdev);
         }
-    kfree(scull_devices);
+    kfree(driver_devices);
     }
 
-    unregister_chrdev_region(devno, scull_nr_devs);
-    printk(KERN_INFO "scull: Goodbye from the LKM!\n");
+    unregister_chrdev_region(devno, driver_nr_devs);
+    printk(KERN_INFO "My Driver: Goodbye from the LKM!\n");
 }
 
-
-int scull_init_module(void)
+int driver_init_module(void)
 {
-	printk(KERN_INFO "scull: initializing the LKM\n");
+	printk(KERN_INFO "My Driver: Initializing the LKM...\n");
     
     int result, i;
     int err;
     dev_t devno = 0; // start naming from 0
-    struct scull_dev *dev; // pointer to scull_dev struct
+    struct driver_dev *dev; // pointer to driver_dev struct
 
-    if (scull_major) { // for the first device (!!)
-        devno = MKDEV(scull_major, scull_minor);
-        result = register_chrdev_region(devno, scull_nr_devs, "scull");
+    if (driver_major) { // for the first device (!!)
+        devno = MKDEV(driver_major, driver_minor);
+        result = register_chrdev_region(devno, driver_nr_devs, "driver");
     } else {
-        result = alloc_chrdev_region(&devno, scull_minor, scull_nr_devs,
-                                     "scull");
-        scull_major = MAJOR(devno);
+        result = alloc_chrdev_region(&devno, driver_minor, driver_nr_devs,
+                                     "driver");
+        driver_major = MAJOR(devno);
     }
     if (result < 0) {
-        printk(KERN_WARNING "scull: failed to register a major number %d\n", scull_major);
+        printk(KERN_WARNING "My Driver: Failed to register a major number %d.\n", driver_major);
         return result;
     }
 
-    printk(KERN_INFO "scull: registered correctly with major number %d\n", scull_major);
+    printk(KERN_INFO "My Driver: Registered correctly with major number %d.\n", driver_major);
     
-    scull_devices = kmalloc(scull_nr_devs * sizeof(struct scull_dev),
+    driver_devices = kmalloc(driver_nr_devs * sizeof(struct driver_dev),
                             GFP_KERNEL); // allocate memory
-    if (!scull_devices) {
+    if (!driver_devices) {
         result = -ENOMEM;
         printk(KERN_ALERT "Failed to create the device\n");
         goto fail;
     }
-    memset(scull_devices, 0, scull_nr_devs * sizeof(struct scull_dev));
+    memset(driver_devices, 0, driver_nr_devs * sizeof(struct driver_dev));
 
     /* Initialize each device. */
-    for (i = 0; i < scull_nr_devs; i++) {
-        dev = &scull_devices[i];
-        dev->quantum = scull_quantum;
-        dev->qset = scull_qset;
+    for (i = 0; i < driver_nr_devs; i++) {
+        dev = &driver_devices[i];
+        dev->quantum = driver_quantum;
+        dev->qset = driver_qset;
         sema_init(&dev->sem,1);
-        devno = MKDEV(scull_major, scull_minor + i);
-        cdev_init(&dev->cdev, &scull_fops);
+        devno = MKDEV(driver_major, driver_minor + i);
+        cdev_init(&dev->cdev, &driver_fops);
         dev->cdev.owner = THIS_MODULE;
-        dev->cdev.ops = &scull_fops;
+        dev->cdev.ops = &driver_fops;
         err = cdev_add(&dev->cdev, devno, 1);
         if (err)
-            printk(KERN_NOTICE "scull: Error %d adding scull%d\n", err, i);
+            printk(KERN_NOTICE "My Driver: Error %d adding%d.\n", err, i);
     }
-    printk(KERN_INFO "scull: device initialized correctly\n"); // device is initialized
+    printk(KERN_INFO "My Driver: Device initialized correctly.\n"); // device is initialized
     return 0; /* succeed */
 
   fail:
-    scull_cleanup_module();
+    driver_cleanup_module();
     return result;
 }
 
-module_init(scull_init_module);
-module_exit(scull_cleanup_module);
+module_init(driver_init_module);
+module_exit(driver_cleanup_module);
