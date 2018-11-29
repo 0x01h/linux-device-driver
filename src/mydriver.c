@@ -32,8 +32,8 @@ MODULE_VERSION("1.0");
 
 unsigned int driver_major = DRIVER_MAJOR;
 unsigned int driver_nr_devs = DRIVER_NR_DEVS;
-static struct cdev c_dev;               // Global variable for the character device structure.
-static struct class *cl;                // Global variable for the device class.
+static struct cdev c_dev;       // Global variable for the character device structure.
+static struct class *cl;        // Global variable for the device class.
 
 module_param(driver_nr_devs, int, S_IRUGO);
 
@@ -63,6 +63,7 @@ int driver_open(struct inode *inode, struct file *filp)
         }
 
     // If data is not NULL, so free all of previous data.
+
     if (dev->data) {
         kfree(dev->data);
         dev->data = NULL;
@@ -133,7 +134,7 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count, lo
         goto out;
     }
 
-    if (!dev->data) {
+    if (!(dev->data)) {
         dev->data = kmalloc(count * sizeof(char *), GFP_KERNEL);
         memset(dev->data, 0, count * sizeof(char *));
     }
@@ -190,7 +191,7 @@ long driver_ioctl(struct file *filp, unsigned int cmd, unsigned long arg)
 }
 
 
-loff_t driver_llseek(struct file *filp, loff_t off, int whence) // Change current read/write position in a file 
+loff_t driver_llseek(struct file *filp, loff_t off, int whence) // Change current read/write position in a file.
 {
     struct driver_dev *dev = filp->private_data;
     loff_t newpos;
@@ -208,7 +209,7 @@ loff_t driver_llseek(struct file *filp, loff_t off, int whence) // Change curren
             newpos = dev->size + off;
             break;
 
-        default: /* can't happen */
+        default: /* Invalid value! */
             return -EINVAL;
     }
     if (newpos < 0)
@@ -275,6 +276,8 @@ int driver_init_module(void)
 
     cdev_init(&c_dev, &driver_fops);
 
+    printk(KERN_INFO "My Driver: %d devices will be created.\n", driver_nr_devs);
+
     if (cdev_add(&c_dev, devno, driver_nr_devs) == -1) {
         printk(KERN_ERR "My Driver: Device add ERROR!\n");
         device_destroy(cl, devno);
@@ -284,8 +287,6 @@ int driver_init_module(void)
     }
 
     for (i = 0; i < driver_nr_devs; i++) {
-    char device_name[16] = "";
-    sprintf(device_name, "queue%d", i);
     if (!device_create(cl, NULL, MKDEV(driver_major, i), NULL, "queue%d", i)) {
         printk(KERN_ERR "My Driver: Device create ERROR!\n");
         class_destroy(cl);
@@ -293,6 +294,28 @@ int driver_init_module(void)
         return -1;
     }
 }
+
+    driver_devices = kmalloc(driver_nr_devs * sizeof(struct driver_dev), GFP_KERNEL);
+
+    if (!driver_devices) {
+        result = -ENOMEM;
+        printk(KERN_ERR "My Driver: Creating device ERROR!\n");
+        goto fail;
+    }
+
+    memset(driver_devices, 0, driver_nr_devs * sizeof(struct driver_dev));
+
+    for (i = 0; i < driver_nr_devs; i++) {
+        dev = &driver_devices[i];
+        sema_init(&dev->sem,1);
+        devno = MKDEV(driver_major, i);
+        cdev_init(&dev->cdev, &driver_fops);
+        dev->cdev.owner = THIS_MODULE;
+        dev->cdev.ops = &driver_fops;
+        err = cdev_add(&dev->cdev, devno, 1);
+        if (err)
+            printk(KERN_NOTICE "My Driver: Error %d adding %d.\n", err, i);
+    }
 
     printk(KERN_INFO "My Driver: Device initialized correctly.\n");
     return 0;
