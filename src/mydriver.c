@@ -1,7 +1,6 @@
 /*
 * Written and tested in Linux eos 4.15.0-39-generic
 * Compatible with newest version of Linux kernel.
-* Check mydriver's major number by inserting manually and change the corresponding line in "install.sh".
 */
 
 #include <linux/module.h>
@@ -22,10 +21,10 @@
 #include "mydriver_ioctl.h"
 
 #define DRIVER_NR_DEVS 5        /* Default number of devices, if not given in arguments. */
-#define DRIVER_MAJOR 0
-#define MAX_LIMIT 32
+#define DRIVER_MAJOR 0          // Dynamically get major number of driver.
+#define MAX_LIMIT 32            // String limit to echo into a file.
 
-MODULE_AUTHOR("Furkan Cakir, Hakan Eroztekin, Orcun Ozdemir");
+MODULE_AUTHOR("Orcun Ozdemir, Furkan Cakir, Hakan Eroztekin");
 MODULE_DESCRIPTION("A simple in-memory character device driver which uses queue to read/write operations.");
 MODULE_LICENSE("GPL and additional rights");
 MODULE_VERSION("1.0");
@@ -120,7 +119,7 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count, lo
     struct driver_dev *dev = filp->private_data;
     ssize_t return_val = -ENOMEM;
 
-    printk(KERN_INFO "My Driver: Written data is '%s'", buf);
+    printk(KERN_INFO "My Driver: Written data is %s", buf);
     printk(KERN_INFO "My Driver: %d bytes were written.", count);
 
     if (down_interruptible(&dev->sem)) {
@@ -268,10 +267,10 @@ int driver_init_module(void)
 
     printk(KERN_INFO "My Driver: Registered correctly with major number %d.\n", driver_major);
 
-    if ((cl = class_create(THIS_MODULE, "mydriver_class")) == NULL) {
+    if (!(cl = class_create(THIS_MODULE, "mydriver_class"))) {
         printk(KERN_ERR "My Driver: Register class ERROR!\n");
         unregister_chrdev_region(devno, driver_nr_devs);
-        return -1;
+        return EINVAL;
     }
 
     cdev_init(&c_dev, &driver_fops);
@@ -283,7 +282,7 @@ int driver_init_module(void)
         device_destroy(cl, devno);
         class_destroy(cl);
         unregister_chrdev_region(devno, driver_nr_devs);
-        return -1;
+        return EINVAL;
     }
 
     for (i = 0; i < driver_nr_devs; i++) {
@@ -291,7 +290,7 @@ int driver_init_module(void)
         printk(KERN_ERR "My Driver: Device create ERROR!\n");
         class_destroy(cl);
         unregister_chrdev_region(devno, driver_nr_devs);
-        return -1;
+        return EINVAL;
     }
 }
 

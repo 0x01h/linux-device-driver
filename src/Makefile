@@ -9,11 +9,11 @@ clean:
 
 # $ make test
 test:
-	sudo rmmod mydriver.ko # If old one was already loaded.	
+	sudo rmmod mydriver # If old one was already loaded.	
 	sudo dmesg -C		   # Clear all previous kernel messages.
-	sudo insmod mydriver.ko
-	sudo mknod /dev/queue0 c 238 0
-	sudo mknod /dev/queue1 c 238 1
+	sudo insmod ./mydriver.ko driver_nr_devs=20	# Create 20 device nodes.
+	# sudo mknod /dev/queue0 c 238 0
+	# sudo mknod /dev/queue1 c 238 1
 	echo 'test queue0' > /dev/queue0
 	cat /dev/queue0
 	echo 'test queue1' > /dev/queue1
