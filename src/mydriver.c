@@ -36,14 +36,21 @@ static struct class *cl;        // Global variable for the device class.
 
 module_param(driver_nr_devs, int, S_IRUGO);
 
+struct driver_dev *driver_devices;
+
+struct my_struct{
+    char *n;
+    struct list_head node;
+};
+
 struct driver_dev {
     char *data;
     unsigned long size;
     struct semaphore sem;
     struct cdev cdev;
+    struct list_head *h;
+    struct list_head *last;
 };
-
-struct driver_dev *driver_devices;
 
 int driver_open(struct inode *inode, struct file *filp)
 {
@@ -61,12 +68,12 @@ int driver_open(struct inode *inode, struct file *filp)
             return -ERESTARTSYS;
         }
 
-    // If data is not NULL, so free all of previous data.
-
-    if (dev->data) {
-        kfree(dev->data);
-        dev->data = NULL;
-        dev->size = 0;
+    // If data is NULL.
+    if (!(dev->data)) {
+        LIST_HEAD(head);
+        head.prev=&head;
+        head.next=&head;
+        dev->last=&head;
     }
 
         up(&dev->sem);  // Restore the semaphore value.
@@ -106,6 +113,14 @@ ssize_t driver_read(struct file *filp, char __user *buf, size_t count, loff_t *f
         return -EFAULT;
     }
 
+    LIST_HEAD(head);
+    list_for_each(dev->h,&head){
+        printk("1");
+        struct my_struct *element = list_entry(dev->h,struct my_struct,node);
+        copy_to_user(buf, element->n, bytes);
+        printk(KERN_INFO "%s", element->n);
+    }
+
     (*f_pos) += bytes;  // Increment position iterator to synchronize buffer outputs.
 
     up(&dev->sem);      // Send up signal to semaphore.
@@ -118,6 +133,7 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count, lo
     printk(KERN_INFO "My Driver: Write request is called.\n");
     struct driver_dev *dev = filp->private_data;
     ssize_t return_val = -ENOMEM;
+    struct my_struct  *new_node;
 
     printk(KERN_INFO "My Driver: Written data is %s", buf);
     printk(KERN_INFO "My Driver: %d bytes were written.", count);
@@ -143,6 +159,11 @@ ssize_t driver_write(struct file *filp, const char __user *buf, size_t count, lo
         return_val = -EFAULT;
         goto out;
     }
+
+    new_node = kmalloc(sizeof(struct my_struct), GFP_KERNEL);
+    new_node->n = dev->data;
+    list_add(&new_node->node, dev->last);
+    dev->last=&new_node->node;
 
     *f_pos += count;
     dev->size = *f_pos;
